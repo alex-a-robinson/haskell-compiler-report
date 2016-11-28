@@ -2,6 +2,21 @@
 
 [Instructions](https://www.cs.bris.ac.uk/Teaching/Resources/COMS22201)
 
+## Overview
+
+1. Give an overview of parsing options
+    1.1 Parser and lexer
+    1.2 Combinators vs other parser methods
+2. Implement monadic parser from bottom up -> show that parsec is developed version of this
+3. Show how BNF translates to parser Combinators
+    3.1. Explain BNF
+    3.2. Simple example with date language converting to combinators
+    3.3.
+4. Write a simple compiler for a language
+    4.1. Use parsec for parsing
+    4.2. use LLVM for compilation to low code
+
+
 ## Resources
 
 ### Haskell compilers
@@ -29,6 +44,8 @@
 **Parser Combinators:**
 
 - [The fundamental limitations of parser combinators... and how to fix them.](http://lambda-the-ultimate.org/node/4160)
+- [Monadic Parsing in Haskell](http://www.cs.uwyo.edu/~jlc/courses/3015/parser_pearl.pdf)
+- **Good one to start with** [Monadic Parsers: Implementing a micro Parsec](http://olenhad.me/articles/monadic-parsers/)
 
 ### Misc
 
