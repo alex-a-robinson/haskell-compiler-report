@@ -92,6 +92,7 @@ Now we have our sweet parser, lets implement some combinators
 > nothing :: Parser String
 > nothing = return ""
 >
+> -- do a parser or nothing
 > optional :: Parser a -> Parser String
 > optional p = do {_ <- p; nothing} `choice` nothing
 
@@ -111,16 +112,8 @@ More combinators, `char` takes a character and consumes and returns if present o
 >
 > some :: Parser a -> Parser [a]
 > some p = do {a <- p; as <- many p; return (a:as)}
->
-> sepBy :: Parser a -> Parser b -> Parser [a]
-> p `sepBy` sep = (p `sepBy1` sep) `choice` return []
->
-> sepBy1 :: Parser a -> Parser b -> Parser [a]
-> p `sepBy1` sep = do a <- p
->                     as <- many (do {_ <- sep; p})
->                     return (a:as)
 
-`many` (0 or more) applications of Parser `p`. `some` (1 or more) is the same. `sepBy` is many applications of `p` separated by applications of Parser `sep` the values of which are chucked.
+`many` (0 or more) applications of Parser `p`. `some` (1 or more) is the same.
 
  ## Lexical Parsing
 Lexical phase = tokenising input
@@ -138,22 +131,7 @@ Lexical phase = tokenising input
 > symbol :: String -> Parser String
 > symbol s = token (string s)
 >
-> digit :: Parser Char
-> digit = satisfies isDigit
->
-> -- nothing :: Parser a
-> -- nothing = return ()
->
-> number :: Parser Int
-> number = num `choice` negSignedNum-- `choice` posSignedNum
->   where num          = do {_ <- optional (symbol "+"); cs <- some digit; return $ read cs}
->         negSignedNum = do {_ <- symbol "-"; cs <- some digit; return $ negate $ read cs}
->         --posSignedNum = do {_ <- symbol "+"; cs <- some digit; return $ read cs}
 
->   --where num          = do {_ <- (symbol "+") `choice` (Parser (const [])); cs <- some digit; return $ read cs}
-
-.>_   <- symbol "+"
-.>             neg <- symbol "-"
 An example, which parses the string "THING" seperated by the string "SEPERATOR". Note this won't work if there are trailing spaces after each "THING", we could use `token $ symbol "THING"` which eats up trailing spaces for us.
 ```haskell
 MP> parse ((symbol "THING") `sepBy` (symbol "SEPERATOR")) "THINGSEPERATORTHINGSEPERATORTHINGLEFT_OVER"
@@ -162,22 +140,21 @@ MP> parse ((symbol "THING") `sepBy` (symbol "SEPERATOR")) "THINGSEPERATORTHINGSE
 
 `space` consumes any whitespace. `token` returns a token ignoring trailing whitespae. `digit` parsers a single digit. `number` parsers integers.
 
-> chainl :: Parser a -> Parser (a -> a -> a) -> a -> Parser a
-> chainl p op a = (p `chainl1` op) `choice` return a
->
-> chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
-> p `chainl1` op = do {a <- p; rest a}
+> foldM :: Parser (a -> a -> a) -> Parser a -> Parser a
+> foldM op p = do {a <- p; rest a}
 >                  where rest a = (do f <- op
 >                                     b <- p
 >                                     rest (f a b))
 >                                 `choice` return a
 
-`chainl1` parses repeated application of a parser `p` seperated by a parser `op` the result value is used to combine the result from the `p` parsers.
+`foldM` parses repeated application of a parser `p` seperated by a parser `op` the result value is used to combine the result from the `p` parsers.
 
  ## Basic Grammar
 
 ```EBNF
-number     = ["+" | "-"] {"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"}
+digit      = "0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
+sign       = "+" | "-"
+number     = [sign] {digit}
 factor     = number | "(" expression ")"
 component  = factor [{("*" | "/") factor}]
 expression = component [{("+" | "-") component}]
@@ -187,21 +164,29 @@ where `{}` means one or more and `[]` means optional.
 
 NOTE we apply mulop then addop for BODMAS
 
-> expression :: Parser Term
-> expression = component `chainl1` additionOp
+> digit :: Parser Char
+> digit = satisfies isDigit
 >
-> additionOp :: Parser (Term -> Term -> Term)
-> additionOp = addition `choice` subtraction
+> number :: Parser Int
+> number = number' `choice` signedNumber
+>   where number'      = do {_ <- optional (symbol "+"); cs <- some digit; return $ read cs}
+>         signedNumber = do {_ <- symbol "-"; cs <- some digit; return $ negate $ read cs}
+>
+> expression :: Parser Term
+> expression = foldM additionP component
+>
+> additionP :: Parser (Term -> Term -> Term)
+> additionP = addition `choice` subtraction
 >   where addition    = do {_ <- symbol "+"; return Add}
 >         subtraction = do {_ <- symbol "-"; return Sub}
 >
-> multiplcationOp :: Parser (Term -> Term -> Term)
-> multiplcationOp = multiplication `choice` division
+> multiplcationP :: Parser (Term -> Term -> Term)
+> multiplcationP = multiplication `choice` division
 >   where multiplication = do {_ <- symbol "*"; return Mul}
 >         division       = do {_ <- symbol "/"; return Div}
 >
 > component :: Parser Term
-> component = factor `chainl1` multiplcationOp
+> component = foldM multiplcationP factor
 >
 > factor :: Parser Term
 > factor = number' `choice` expression'
