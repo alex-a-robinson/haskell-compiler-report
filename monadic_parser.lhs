@@ -87,6 +87,13 @@ Now we have our sweet parser, lets implement some combinators
 > choice p q = Parser (\s -> case parse (mplus p q) s of
 >                                [] -> []
 >                                (x:_) -> [x])
+>
+> -- do nothing parser
+> nothing :: Parser String
+> nothing = return ""
+>
+> optional :: Parser a -> Parser String
+> optional p = do {_ <- p; nothing} `choice` nothing
 
 `MonadPlus` type class is a common pattern, `mzero` denotes failure, `mplus` concats the result from two Parsers (as failure is `[]`, then if first parser files it concats result of second parser to `[]`). As mostly we only care about the first result we have the combinator `choice` which applies mplus and returns the first result if success, or [] on failure.
 
@@ -128,19 +135,28 @@ Lexical phase = tokenising input
 > token :: Parser a -> Parser a
 > token p = do {a <- p; _ <- space; return a}
 >
-> symb :: String -> Parser String
-> symb s = token (string s)
+> symbol :: String -> Parser String
+> symbol s = token (string s)
 >
 > digit :: Parser Char
 > digit = satisfies isDigit
 >
+> -- nothing :: Parser a
+> -- nothing = return ()
+>
 > number :: Parser Int
-> number = do cs <- some digit
->             return $ read cs
+> number = num `choice` negSignedNum-- `choice` posSignedNum
+>   where num          = do {_ <- optional (symbol "+"); cs <- some digit; return $ read cs}
+>         negSignedNum = do {_ <- symbol "-"; cs <- some digit; return $ negate $ read cs}
+>         --posSignedNum = do {_ <- symbol "+"; cs <- some digit; return $ read cs}
 
-An example, which parses the string "THING" seperated by the string "SEPERATOR". Note this won't work if there are trailing spaces after each "THING", we could use `token $ symb "THING"` which eats up trailing spaces for us.
+>   --where num          = do {_ <- (symbol "+") `choice` (Parser (const [])); cs <- some digit; return $ read cs}
+
+.>_   <- symbol "+"
+.>             neg <- symbol "-"
+An example, which parses the string "THING" seperated by the string "SEPERATOR". Note this won't work if there are trailing spaces after each "THING", we could use `token $ symbol "THING"` which eats up trailing spaces for us.
 ```haskell
-MP> parse ((symb "THING") `sepBy` (symb "SEPERATOR")) "THINGSEPERATORTHINGSEPERATORTHINGLEFT_OVER"
+MP> parse ((symbol "THING") `sepBy` (symbol "SEPERATOR")) "THINGSEPERATORTHINGSEPERATORTHINGLEFT_OVER"
 [(["THING","THING","THING"],"LEFT_OVER")]
 ```
 
@@ -160,30 +176,43 @@ MP> parse ((symb "THING") `sepBy` (symb "SEPERATOR")) "THINGSEPERATORTHINGSEPERA
 
  ## Basic Grammar
 
+```EBNF
+number     = ["+" | "-"] {"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"}
+factor     = number | "(" expression ")"
+component  = factor [{("*" | "/") factor}]
+expression = component [{("+" | "-") component}]
+```
+
+where `{}` means one or more and `[]` means optional.
+
 NOTE we apply mulop then addop for BODMAS
 
-> expr :: Parser Term
-> expr = term `chainl1` addop
+> expression :: Parser Term
+> expression = component `chainl1` additionOp
 >
-> addop :: Parser (Term -> Term -> Term)
-> addop = do {_ <- symb "+"; return Add} `choice` do {_ <- symb "-"; return Sub}
+> additionOp :: Parser (Term -> Term -> Term)
+> additionOp = addition `choice` subtraction
+>   where addition    = do {_ <- symbol "+"; return Add}
+>         subtraction = do {_ <- symbol "-"; return Sub}
 >
-> mulop :: Parser (Term -> Term -> Term)
-> mulop = do {_ <- symb "*"; return Mul} `choice` do {_ <- symb "/"; return Div}
+> multiplcationOp :: Parser (Term -> Term -> Term)
+> multiplcationOp = multiplication `choice` division
+>   where multiplication = do {_ <- symbol "*"; return Mul}
+>         division       = do {_ <- symbol "/"; return Div}
 >
-> term :: Parser Term
-> term = factor `chainl1` mulop
+> component :: Parser Term
+> component = factor `chainl1` multiplcationOp
 >
 > factor :: Parser Term
-> factor = numTerm `choice` parenTerm
->   where numTerm = do {a <- number; _ <- space; return $ Num a}
->         parenTerm = do {_ <- symb "("; n <- expr; _ <- symb ")"; return n}
->
+> factor = number' `choice` expression'
+>   where number'     = do {a <- number; _ <- space; return $ Num a}
+>         expression' = do {_ <- symbol "("; n <- expression; _ <- symbol ")"; return n}
 >
 >
 > run :: String -> IO()
-> run s = case head $ parse expr s of
->           (ast, "")  -> print ast
->           (ast, err) -> do {print ast; putStrLn ("Error parsing next character '" ++ [head err] ++ "'.")}
+> run s = case parse expression s of
+>           [(ast, "")]  -> print ast
+>           [(ast, err)] -> do {print ast; putStrLn ("Error parsing next character '" ++ [head err] ++ "'.")}
+>           _            -> putStrLn "Error parsing"
 
 Note can't deal with negative numbers!
