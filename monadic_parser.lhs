@@ -3,8 +3,9 @@
 
 Based on [Monadic Parsers: Implementing a micro Parsec](http://olenhad.me/articles/monadic-parsers/)
 
-**TODO Checkout [Monadic Parser](https://www.schoolofhaskell.com/user/fniksic/monadic-parser)**
-`newtype` vs `data`
+ ## TODO
+- clean up documentaiton, examples, funciton names, make my own
+- Clean up monad code, some not needed
 
  ## Introduction
 What is a parser, it is a function which takes a string and outputs a list of tuples of results and remaining string to parse.
@@ -28,6 +29,13 @@ Now we'll define a function which applies a Parser. It extracts the funciton fro
 
 > parse :: Parser t -> String -> [(t, String)]
 > parse (Parser p) = p
+
+> data Term = Num Int
+>           | Add Term Term
+>           | Sub Term Term
+>           | Mul Term Term
+>           | Div Term Term
+>             deriving (Show)
 
 What if we want to apply two parsers together, i.e. funciton composition f(g(x)). We call this binding.
 
@@ -75,12 +83,12 @@ Now we have our sweet parser, lets implement some combinators
 >   mzero = Parser (const [])
 >   mplus p q = Parser (\s -> parse p s ++ parse q s)
 >
-> option :: Parser a -> Parser a -> Parser a
-> option p q = Parser (\s -> case parse (mplus p q) s of
+> choice :: Parser a -> Parser a -> Parser a
+> choice p q = Parser (\s -> case parse (mplus p q) s of
 >                                [] -> []
 >                                (x:_) -> [x])
 
-`MonadPlus` type class is a common pattern, `mzero` denotes failure, `mplus` concats the result from two Parsers (as failure is `[]`, then if first parser files it concats result of second parser to `[]`). As mostly we only care about the first result we have the combinator `option` which applies mplus and returns the first result if success, or [] on failure.
+`MonadPlus` type class is a common pattern, `mzero` denotes failure, `mplus` concats the result from two Parsers (as failure is `[]`, then if first parser files it concats result of second parser to `[]`). As mostly we only care about the first result we have the combinator `choice` which applies mplus and returns the first result if success, or [] on failure.
 
 More combinators, `char` takes a character and consumes and returns if present otherwise fails. `string` takes a string and consumes that string if found in the input.
 
@@ -92,13 +100,13 @@ More combinators, `char` takes a character and consumes and returns if present o
 > string (c:cs) = do {_ <- char c; _ <- string cs; return (c:cs)}
 
 > many :: Parser a -> Parser [a]
-> many p = some p `option` return []
+> many p = some p `choice` return []
 >
 > some :: Parser a -> Parser [a]
 > some p = do {a <- p; as <- many p; return (a:as)}
 >
 > sepBy :: Parser a -> Parser b -> Parser [a]
-> p `sepBy` sep = (p `sepBy1` sep) `option` return []
+> p `sepBy` sep = (p `sepBy1` sep) `choice` return []
 >
 > sepBy1 :: Parser a -> Parser b -> Parser [a]
 > p `sepBy1` sep = do a <- p
@@ -130,7 +138,7 @@ Lexical phase = tokenising input
 > number = do cs <- some digit
 >             return $ read cs
 
-A quick example, which parses the string "THING" seperated by the string "SEPERATOR"
+An example, which parses the string "THING" seperated by the string "SEPERATOR". Note this won't work if there are trailing spaces after each "THING", we could use `token $ symb "THING"` which eats up trailing spaces for us.
 ```haskell
 MP> parse ((symb "THING") `sepBy` (symb "SEPERATOR")) "THINGSEPERATORTHINGSEPERATORTHINGLEFT_OVER"
 [(["THING","THING","THING"],"LEFT_OVER")]
@@ -139,36 +147,43 @@ MP> parse ((symb "THING") `sepBy` (symb "SEPERATOR")) "THINGSEPERATORTHINGSEPERA
 `space` consumes any whitespace. `token` returns a token ignoring trailing whitespae. `digit` parsers a single digit. `number` parsers integers.
 
 > chainl :: Parser a -> Parser (a -> a -> a) -> a -> Parser a
-> chainl p op a = (p `chainl1` op) `option` return a
+> chainl p op a = (p `chainl1` op) `choice` return a
 >
 > chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
 > p `chainl1` op = do {a <- p; rest a}
 >                  where rest a = (do f <- op
 >                                     b <- p
 >                                     rest (f a b))
->                                 `option` return a
+>                                 `choice` return a
 
 `chainl1` parses repeated application of a parser `p` seperated by a parser `op` the result value is used to combine the result from the `p` parsers.
 
  ## Basic Grammar
 
-> expr :: Parser Int
+NOTE we apply mulop then addop for BODMAS
+
+> expr :: Parser Term
 > expr = term `chainl1` addop
 >
-> addop :: Parser (Int -> Int -> Int)
-> addop = do {_ <- symb "+"; return (+)} `option` do {_ <- symb "-"; return (-)}
+> addop :: Parser (Term -> Term -> Term)
+> addop = do {_ <- symb "+"; return Add} `choice` do {_ <- symb "-"; return Sub}
 >
-> mulop :: Parser (Int -> Int -> Int)
-> mulop = do {_ <- symb "*"; return (*)} `option` do {_ <- symb "/"; return div}
+> mulop :: Parser (Term -> Term -> Term)
+> mulop = do {_ <- symb "*"; return Mul} `choice` do {_ <- symb "/"; return Div}
 >
-> term :: Parser Int
+> term :: Parser Term
 > term = factor `chainl1` mulop
 >
-> factor :: Parser Int
-> factor = number `option` do {_ <- symb "("; n <- expr; _ <- symb ")"; return n}
+> factor :: Parser Term
+> factor = numTerm `choice` parenTerm
+>   where numTerm = do {a <- number; _ <- space; return $ Num a}
+>         parenTerm = do {_ <- symb "("; n <- expr; _ <- symb ")"; return n}
 >
 >
-> run :: String -> Maybe Int
-> run s = case parse expr s of
->              [(num, _)] -> Just num
->              _          -> Nothing
+>
+> run :: String -> IO()
+> run s = case head $ parse expr s of
+>           (ast, "")  -> print ast
+>           (ast, err) -> do {print ast; putStrLn ("Error parsing next character '" ++ [head err] ++ "'.")}
+
+Note can't deal with negative numbers!
