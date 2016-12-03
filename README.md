@@ -4,6 +4,8 @@
 
 ## Overview
 
+0. Cata/Fix
+    0.1 Explain what the hell it is
 1. Give an overview of parsing options
     1.1 Parser and lexer
     1.2 Combinators vs other parser methods

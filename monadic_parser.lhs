@@ -4,6 +4,7 @@
 Based on [Monadic Parsers: Implementing a micro Parsec](http://olenhad.me/articles/monadic-parsers/)
 
  ## TODO
+ - brief introduction to combinatory logic
 - clean up documentaiton, examples, funciton names, make my own
 - Clean up monad code, some not needed
 
@@ -18,6 +19,7 @@ What is a parser, it is a function which takes a string and outputs a list of tu
 > import Control.Monad (liftM, ap)
 >
 > data Parser a = Parser (String -> [(a, String)])
+>
 > item :: Parser Char
 > item = Parser (\s -> case s of
 >                       "" -> []
@@ -83,11 +85,6 @@ Now we have our sweet parser, lets implement some combinators
 >   mzero = Parser (const [])
 >   mplus p q = Parser (\s -> parse p s ++ parse q s)
 >
-> choice :: Parser a -> Parser a -> Parser a
-> choice p q = Parser (\s -> case parse (mplus p q) s of
->                                [] -> []
->                                (x:_) -> [x])
->
 > -- do nothing parser
 > nothing :: Parser String
 > nothing = return ""
@@ -95,6 +92,11 @@ Now we have our sweet parser, lets implement some combinators
 > -- do a parser or nothing
 > optional :: Parser a -> Parser String
 > optional p = do {_ <- p; nothing} `choice` nothing
+>
+> choice :: Parser a -> Parser a -> Parser a
+> choice a b = Parser (\s -> case parse (mplus a b) s of
+>                                [] -> []
+>                                (x:_) -> [x])
 
 `MonadPlus` type class is a common pattern, `mzero` denotes failure, `mplus` concats the result from two Parsers (as failure is `[]`, then if first parser files it concats result of second parser to `[]`). As mostly we only care about the first result we have the combinator `choice` which applies mplus and returns the first result if success, or [] on failure.
 
